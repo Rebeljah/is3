@@ -24,3 +24,6 @@ print(bucket.objects[0].retrive())
 # delete all objects uploaded in the bucket and delete the bucket file
 bucket.delete()
 ```
+
+You will need to register your application with the Imgur API and put your API client-ID in a .env file like this:
+![The .env file contining the client id for the imgur API](https://i.imgur.com/McS1hQp.png)
