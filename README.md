@@ -19,7 +19,7 @@ bucket.push_changes()
 bucket = is3.Bucket.load(bucket.id)
 
 #  get an uploaded item. Prints the added list ['hello', 'world']
-print(bucket.objects[0].retrive())
+print(bucket.objects[0].retrieve())
 
 # delete all objects uploaded in the bucket and delete the bucket file
 bucket.delete()
