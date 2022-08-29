@@ -9,11 +9,11 @@ import is3
 bucket = is3.Bucket.new()
 
 # add some stuff
-bucket.add_item(['hello', 'world'])
-bucket.add_item(b'careful! this string bytes!')
+bucket.add_object(['hello', 'world'])
+bucket.add_object(b'careful! this string bytes!')
 
 # upload all added objects
-bucket.push()
+bucket.push_changes()
 
 # load a bucket file from disk
 bucket = is3.Bucket.load(bucket.id)
