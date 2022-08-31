@@ -30,7 +30,7 @@ hltKjaW obj_id='hltKjaW' deletehash='kJ7WLwpRwN1A8HU'
 """
 
 # load bucket from disk
-bucket = load_bucket(bucket.id)
+bucket = is3.load_bucket(bucket.id)
 
 # download get all of the previously uploaded objects
 ids = bucket.uploaded_objects.keys()
