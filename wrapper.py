@@ -1,8 +1,7 @@
 
 """This module proivdes wrapper functionality for the imgur API"""
 
-import requests
-from pydantic import BaseModel
+import aiohttp
 import dotenv, os
 
 dotenv.load_dotenv()
@@ -16,62 +15,65 @@ API_ENDPOINTS = {
     }
 
 
-class RequestMaker:
-    def __init__(self) -> None:
-        self.credits = {
-            k : None for k in (
-            'X-RateLimit-UserLimit', 'X-RateLimit-UserRemaining',
-            'X-RateLimit-UserReset', 'X-RateLimit-ClientLimit',
-            'X-RateLimit-ClientRemaining', 'X-Post-Rate-Limit-Limit',
-            'X-Post-Rate-Limit-Remaining', 'X-Post-Rate-Limit-Reset'
-            )
-        }
+# class RequestMaker:
+#     def __init__(self) -> None:
+#         self.credits = {
+#             k : None for k in (
+#             'X-RateLimit-UserLimit', 'X-RateLimit-UserRemaining',
+#             'X-RateLimit-UserReset', 'X-RateLimit-ClientLimit',
+#             'X-RateLimit-ClientRemaining', 'X-Post-Rate-Limit-Limit',
+#             'X-Post-Rate-Limit-Remaining', 'X-Post-Rate-Limit-Reset'
+#             )
+#         }
     
-    def _update_credit_info(self, resp_headers) -> None:
-        self.credits.update({
-            k: v for k, v in resp_headers.items() if k in self.credits
-        })
-    
-    def request(self, method: str, *args, **kwargs) -> dict | bytes:
-        resp = requests.request(method, *args, **kwargs)
-        self._update_credit_info(resp.headers)
-        content_type = resp.headers['content-type']
-        if 'image' in content_type:
-            return resp.content
-        elif 'json' in content_type:
-            return resp.json()
-        else:
-            raise RuntimeError('Unexpected response content-type "{resp.content_type}"')
-    
+#     def _update_credit_info(self, resp_headers) -> None:
+#         self.credits.update({
+#             k: v for k, v in resp_headers.items() if k in self.credits
+#         })
 
 class ImgurClient:
     """Class to interact with various API endpoints"""
     def __init__(self) -> None:
-        self._request = RequestMaker().request
+        self._session = aiohttp.ClientSession()
+    
+    async def __aenter__(self):
+        return self
+    
+    async def __aexit__(self, *err):
+        await self._session.close()
+    
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        *args, **kwargs
+        ) -> dict | bytes:
+        """Make a request with the specified method to the endpoint. All requests
+        should either return raw image data as bytes or other data as JSON"""
+        async with self._session.request(method, url, *args, **kwargs) as resp:
+            match resp.content_type:
+                case 'image/png': return await resp.read()
+                case 'application/json': return (await resp.json())['data']
+                case _: raise RuntimeError(
+                    'Unexpected response content-type "{resp.content_type}"'
+                    )
 
-    def upload_image(self, data: str) -> tuple[str, str]:
+    async def upload_image(self, data: str) -> tuple[str, str]:
         """Upload an image and return img id and deletehash"""
-        resp_body = self._request(
-            'post',
-            API_ENDPOINTS['upload'],
+        r = await self._request(
+            method='post',
+            url=API_ENDPOINTS['upload'],
             headers=AUTH_HEADER, 
             data={'image': data, 'type': 'base64'}
         )
-        data = resp_body['data']
-        return data['id'], data['deletehash']
+        return r['id'], r['deletehash']
     
-    def download_image(self, image_id: str, ext: str = 'png') -> bytes:
-        """Download the image and return the data as bytes. If a file extension
-        is not given, 'png' is used"""
-        return self._request(
-            'get',
-            f"{API_ENDPOINTS['download']}{image_id}.{ext}",
-        )
+    async def download_image(self, image_id: str) -> bytes:
+        """Download the image and return the data as bytes."""
+        url = API_ENDPOINTS['download'] + image_id + '.png'
+        return await self._request('get', url)
         
-    def delete_image(self, deletehash: str) -> None:
+    async def delete_image(self, deletehash: str) -> None:
         """Delete an image using a deletehash string"""
-        self._request(
-            'delete',
-            API_ENDPOINTS['delete'] + deletehash, 
-            headers=AUTH_HEADER
-        )
+        url = API_ENDPOINTS['delete'] + deletehash
+        await self._request('delete', url, headers=AUTH_HEADER)

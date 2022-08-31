@@ -1,13 +1,16 @@
 
-from pydantic import BaseModel
-from pathlib import Path
-import json
-import string
+import asyncio
+import pickle
 import random
+import string
+from pathlib import Path
+from PIL import Image
 from typing import Any, Optional
 
-from wrapper import ImgurClient as Imgur
+from pydantic import BaseModel
+
 import utils
+from wrapper import ImgurClient as Imgur
 
 BUCKETS_FOLDER = Path(__file__).parent / 'buckets'
 
@@ -16,106 +19,124 @@ def make_bucket_id() -> str:
     return ''.join(random.choices(string.ascii_letters, k=6))
 
 
-class BucketObject(BaseModel):
-    is_uploaded: bool = False
-    id: str = Optional[str]
-    deletehash: Optional[str]
-    obj: Optional[Any]
-
-    def retrieve(self) -> Any:
-        assert self.is_uploaded
-        assert self.id is not None
-
-        data = Imgur().download_image(self.id)
-        img = utils.bytes_to_image(data)
-
-        return utils.image_to_object(img)
-
-    def push(self):
-        assert not self.is_uploaded
-
-        img = utils.object_to_image(self.obj)
-        data = utils.image_to_b64_string(img)
-
-        self.id, self.deletehash = Imgur().upload_image(data)
-        self.is_uploaded = True
-    
-    def delete(self):
-        assert self.is_uploaded
-        assert self.deletehash is not None
-
-        Imgur().delete_image(self.deletehash)
-
-        self.is_uploaded = False
-    
-    @classmethod
-    def new(cls, obj: Any):
-        return cls(obj=obj)
-
-    @classmethod
-    def from_id(cls, id: str, deletehash: str):
-        return BucketObject(id=id, deletehash=deletehash, is_uploaded=True)
+class _UploadedObject(BaseModel):
+    obj_id: str
+    deletehash: str
 
 
-class Bucket:
+class _StagedObject(BaseModel):
+    """Represents a bucket object that has been added to a bucket but not yet
+    uploaded"""
+    obj: Any
+
+    def image(self) -> Image.Image:
+        return utils.object_to_image(self.obj)
+
+
+class _Bucket:
     def __init__(self, id: Optional[str] = None) -> None:
         self.id = id or make_bucket_id()
-        self.objects: list[BucketObject] = []
-    
-    @property
-    def is_synced(self) -> bool:
-        return all(o.is_uploaded for o in self.objects)
+        self.uploaded_objects: dict[str, _UploadedObject] = {}
+        self.staged_objects: list[_StagedObject] = []
 
-    def add_object(self, obj: Any, push=False) -> None:
-        o = BucketObject.new(obj)
-        self.objects.append(o)
-
-        if push:
-            o.push()
+    def add(self, *objs: tuple[Any]) -> None:
+        for obj in objs:
+            o = _StagedObject(obj=obj)
+            self.staged_objects.append(o)
     
-    def get_object(self, id: str) -> Any:
-        o = next((o for o in self.objects if o.id == id), None)
-        if o is None:
-            raise ValueError(f"object id not found '{id}'")
-        
-        return o.retrieve()
+    async def get(self, *obj_ids: tuple[str]) -> list:
+        return await(_download_objects(*obj_ids))
     
-    def push_changes(self) -> None:
-        for o in [o for o in self.objects if not o.is_uploaded]:
-            o.push()
-        
-        self.save_to_disk()
+    async def push(self) -> None:
+        objects = await _upload_objects(*self.staged_objects)
+        self.staged_objects.clear()
+        for o in objects:
+            self.uploaded_objects[o.obj_id] = o
+        self._save_to_disk()
     
-    def delete(self):
+    async def delete(self):
         """Delete the bucket and all objects it holds"""
-        for o in self.objects:
-            o.delete()
-        
+        await _delete_objects(*self.uploaded_objects.values())
         (BUCKETS_FOLDER / self.id).unlink()
     
-    def save_to_disk(self):
-        d = [(o.id, o.deletehash) for o in self.objects]
-        d = json.dumps(d, indent=None, separators=(',',':'))
-
+    def _save_to_disk(self):
+        d = pickle.dumps(self.uploaded_objects)
         BUCKETS_FOLDER.mkdir(exist_ok=True)
         with open(BUCKETS_FOLDER / self.id, 'wb') as f:
-            f.write(utils.compress(d.encode()))
+            f.write(utils.compress(d))
 
-    @classmethod
-    def new(cls):
-        b = cls()
-        b.save_to_disk()
-        return b
 
-    @classmethod
-    def load(cls, id: str):
-        b = cls(id)
+async def _upload_objects(*objects: tuple[_StagedObject]) -> list[_UploadedObject]:
+    async with Imgur() as imgur:
+        images = (utils.image_to_b64_string(o.image()) for o in objects)
+        coros = map(imgur.upload_image, images)
+        obj_info = await asyncio.gather(*coros)
+    
+    uploaded_objects = []
+    for obj_id, obj_deletehash in obj_info:
+        o = _UploadedObject(obj_id=obj_id, deletehash=obj_deletehash)
+        uploaded_objects.append(o)
+    
+    return uploaded_objects
 
-        with open(BUCKETS_FOLDER / id, 'rb') as f:
-            d = utils.decompress(f.read())
 
-        for obj_id, obj_deletehash in json.loads(d):
-            o = BucketObject.from_id(obj_id, obj_deletehash)
-            b.objects.append(o)
-        
-        return b
+async def _download_objects(*obj_ids: tuple[str]) -> list:
+    async with Imgur() as imgur:
+        coros = map(imgur.download_image, obj_ids)
+        images: tuple[bytes] = await asyncio.gather(*coros)
+    
+    images = map(utils.bytes_to_image, images)
+    downloaded_objects = list(map(utils.image_to_object, images))
+
+    return downloaded_objects
+
+
+async def _delete_objects(*objects: tuple[_UploadedObject]) -> None:
+    async with Imgur() as imgur:
+        deletehashes = (o.deletehash for o in objects)
+        coros = map(imgur.delete_image, deletehashes)
+        await asyncio.gather(*coros)
+
+
+def new_bucket():
+    return _Bucket()
+
+
+def load_bucket(bucket_id: str) -> _Bucket:
+    b = _Bucket(bucket_id)
+
+    with open(BUCKETS_FOLDER / bucket_id, 'rb') as f:
+        objects: dict = pickle.loads(utils.decompress(f.read()))
+    
+    b.uploaded_objects = objects
+
+    return b
+
+
+async def main():
+    bucket = new_bucket()
+
+    bucket.add(
+        {'pi': 3.14},
+        b'nobody',
+        ['expects', 'the'],
+        {'spammish', ('inquisition')},
+    )
+
+    await bucket.push()
+
+    for k, v in bucket.uploaded_objects.items():
+        print(k, v)
+
+    bucket = load_bucket(bucket.id)
+
+    ids = bucket.uploaded_objects.keys()
+    objects = await bucket.get(*ids)
+    print(*objects, sep='\n')
+
+    await bucket.delete()
+
+
+if __name__ == '__main__':
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(main())

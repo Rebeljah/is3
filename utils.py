@@ -20,7 +20,7 @@ def decompress(b: bytes) -> bytes:
     return zlib.decompress(b)
 
 
-def object_to_image(obj: Any) -> Image:
+def object_to_image(obj: Any) -> Image.Image:
     """Take a object and convert it to an image.
     
     The object is first pickled to bytes, then the array is padded and reshaped
@@ -58,7 +58,7 @@ def object_to_image(obj: Any) -> Image:
     return Image.fromarray(img_arr)
 
 
-def image_to_object(image: Image) -> Any:
+def image_to_object(image: Image.Image) -> Any:
     """Take a PIL Image and unpickle it's data to an object
     
     Convert the image to an array, flatten to obtain serial bytes, then unpickle
@@ -78,7 +78,7 @@ def image_to_object(image: Image) -> Any:
     return pickle.loads(decompress(data))
 
 
-def image_to_b64_string(img: Image) -> str:
+def image_to_b64_string(img: Image.Image) -> str:
     """Return a str representing the image as b64 encoded bytes"""
     # save the image as PNG to a buffer
     buffer = io.BytesIO()
@@ -88,7 +88,7 @@ def image_to_b64_string(img: Image) -> str:
     return base64.b64encode(buffer.read()).decode()
 
 
-def bytes_to_image(b: bytes) -> Image:
+def bytes_to_image(b: bytes) -> Image.Image:
     """Create an Image using raw bytes"""
     buffer = io.BytesIO(b)
     buffer.seek(0)
