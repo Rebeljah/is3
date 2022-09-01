@@ -1,12 +1,16 @@
 
 """This module proivdes wrapper functionality for the imgur API"""
 
-import aiohttp
 import dotenv, os
+from PIL import Image
+from aiohttp import ClientSession
+
+from typing import Optional
+
+import utils
 
 dotenv.load_dotenv()
 AUTH_HEADER = {'Authorization': f"Client-ID {os.getenv('CLIENT_ID')}"}
-
 API_ENDPOINTS = {
     'upload': 'https://api.imgur.com/3/upload/',
     'download': 'http://i.imgur.com/',
@@ -14,27 +18,10 @@ API_ENDPOINTS = {
     'delete': 'https://api.imgur.com/3/image/',
     }
 
-
-# class RequestMaker:
-#     def __init__(self) -> None:
-#         self.credits = {
-#             k : None for k in (
-#             'X-RateLimit-UserLimit', 'X-RateLimit-UserRemaining',
-#             'X-RateLimit-UserReset', 'X-RateLimit-ClientLimit',
-#             'X-RateLimit-ClientRemaining', 'X-Post-Rate-Limit-Limit',
-#             'X-Post-Rate-Limit-Remaining', 'X-Post-Rate-Limit-Reset'
-#             )
-#         }
-    
-#     def _update_credit_info(self, resp_headers) -> None:
-#         self.credits.update({
-#             k: v for k, v in resp_headers.items() if k in self.credits
-#         })
-
 class ImgurClient:
     """Class to interact with various API endpoints"""
-    def __init__(self) -> None:
-        self._session = aiohttp.ClientSession()
+    def __init__(self, session: Optional[ClientSession] = None) -> None:
+        self._session = session or ClientSession()
     
     async def __aenter__(self):
         return self
@@ -58,8 +45,9 @@ class ImgurClient:
                     'Unexpected response content-type "{resp.content_type}"'
                     )
 
-    async def upload_image(self, data: str) -> tuple[str, str]:
+    async def upload_image(self, img: Image.Image) -> tuple[str, str]:
         """Upload an image and return img id and deletehash"""
+        data = utils.image_to_b64_string(img)
         r = await self._request(
             method='post',
             url=API_ENDPOINTS['upload'],
@@ -68,10 +56,12 @@ class ImgurClient:
         )
         return r['id'], r['deletehash']
     
-    async def download_image(self, image_id: str) -> bytes:
+    async def download_image(self, image_id: str) -> Image.Image:
         """Download the image and return the data as bytes."""
         url = API_ENDPOINTS['download'] + image_id + '.png'
-        return await self._request('get', url)
+        data = await self._request('get', url)
+
+        return utils.bytes_to_image(data)
         
     async def delete_image(self, deletehash: str) -> None:
         """Delete an image using a deletehash string"""

@@ -1,11 +1,13 @@
-import base64
 import io
 import math
-import pickle
 import zlib
-from typing import Any
+import base64
+import pickle
 import numpy as np
 from PIL import Image
+
+from os import PathLike
+from typing import Any
 
 HEADER_SIZE = 4  # bytes
 
@@ -94,3 +96,13 @@ def bytes_to_image(b: bytes) -> Image.Image:
     buffer.seek(0)
     
     return Image.open(buffer)
+
+
+def write_compressed(data: bytes, fp: PathLike) -> None:
+    with open(fp, 'wb') as f:
+        f.write(compress(data))
+
+
+def read_compressed(fp: PathLike) -> bytes:
+    with open(fp, 'rb') as f:
+        return decompress(f.read())
