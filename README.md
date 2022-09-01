@@ -6,23 +6,46 @@ Example usage:
 ```py
 import is3
 
-bucket = is3.Bucket.new()
+bucket = is3.new_bucket()
 
-# add some stuff
-bucket.add_object(['hello', 'world'])
-bucket.add_object(b'careful! this string bytes!')
+# stage some objects to be uploaded
+bucket.add(
+    {'pi': 3.14},
+    b'nobody',
+    ['expects', 'the'],
+    {'spammish', ('inquisition')},
+)
 
-# upload all added objects
-bucket.push_changes()
+# upload the staged objects and save bucket index to disk
+await bucket.push()
 
-# load a bucket file from disk
-bucket = is3.Bucket.load(bucket.id)
+for k, v in bucket.uploaded_objects.items():
+    print(k, v)
+"""
+prints:
+xQMJt0N obj_id='xQMJt0N' deletehash='usl5fBowV9yDeVt'
+6Dg6DvU obj_id='6Dg6DvU' deletehash='Ebxh1akg81cWpaE'
+FEkvW3h obj_id='FEkvW3h' deletehash='ZUvGK3LkONom2v3'
+hltKjaW obj_id='hltKjaW' deletehash='kJ7WLwpRwN1A8HU'
+"""
 
-#  get an uploaded item. Prints the added list ['hello', 'world']
-print(bucket.objects[0].retrieve())
+# load bucket from disk
+bucket = is3.load_bucket(bucket.id)
 
-# delete all objects uploaded in the bucket and delete the bucket file
-bucket.delete()
+# download get all of the previously uploaded objects
+ids = bucket.uploaded_objects.keys()
+objects = await bucket.get(*ids)
+print(*objects, sep='\n')
+"""
+prints:
+{'pi': 3.14}
+b'nobody'
+['expects', 'the']
+{'spammish', 'inquisition'}
+"""
+
+# delete all uploaded objects and remove the bucket index from the disk
+await bucket.delete()
 ```
 
 You will need to register your application with the Imgur API and put your API client-ID in a .env file like this:
