@@ -27,7 +27,7 @@ class UploadedObject(BaseModel):
 
     def __getstate__(self):
         d = super().__getstate__()
-        d['__dict__'].update({'cached_obj': None})
+        d['__dict__']['cached_obj'] = None
         d['__fields_set__'].discard('cached_obj')
         return d
 

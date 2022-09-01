@@ -12,16 +12,6 @@ from typing import Any
 HEADER_SIZE = 4  # bytes
 
 
-def compress(b: bytes, level=9) -> bytes:
-    """Compress the bytes using zlib"""
-    return zlib.compress(b, level)
-
-
-def decompress(b: bytes) -> bytes:
-    """Decompress the bytes using zlib"""
-    return zlib.decompress(b)
-
-
 def object_to_image(obj: Any) -> Image.Image:
     """Take a object and convert it to an image.
     
@@ -96,6 +86,16 @@ def bytes_to_image(b: bytes) -> Image.Image:
     buffer.seek(0)
     
     return Image.open(buffer)
+
+
+def compress(b: bytes, level=9) -> bytes:
+    """Compress the bytes using zlib"""
+    return zlib.compress(b, level)
+
+
+def decompress(b: bytes) -> bytes:
+    """Decompress the bytes using zlib"""
+    return zlib.decompress(b)
 
 
 def write_compressed(data: bytes, fp: PathLike) -> None:
