@@ -2,49 +2,45 @@
 
 is3 uses imgur to enable bucket storage of arbitray objects. Use at your own risk!
 
-Example usage:
+First import is3
 ```py
 import is3
+```
 
-bucket = is3.new_bucket()
+Creating a new bucket
+```py
+bucket = is3.Bucket('my-is3-bucket')
+```
 
-# stage some objects to be uploaded
-bucket.add(
-    {'pi': 3.14},
-    b'nobody',
-    ['expects', 'the'],
-    {'spammish', ('inquisition')},
-)
+Adding and uploading objects
+```py
+some_object = {'hello': b'world', ('foo', 'bar'): {'baz'}}
+another_one = ['another', 'one']
 
-# upload the staged objects and save bucket index to disk
-await bucket.push()
+bucket.stage_obj(some_object, 'my-object')
+bucket.stage_obj(another_one, 'my-other-object')
 
-for k, v in bucket.uploaded_objects.items():
-    print(k, v)
-"""
-prints:
-xQMJt0N obj_id='xQMJt0N' deletehash='usl5fBowV9yDeVt'
-6Dg6DvU obj_id='6Dg6DvU' deletehash='Ebxh1akg81cWpaE'
-FEkvW3h obj_id='FEkvW3h' deletehash='ZUvGK3LkONom2v3'
-hltKjaW obj_id='hltKjaW' deletehash='kJ7WLwpRwN1A8HU'
-"""
+await bucket.commit()
+```
 
-# load bucket from disk
-bucket = is3.load_bucket(bucket.id)
+Loading a bucket from disk
+```py
+bucket = is3.Bucket.load('my-is3-bucket')
+```
 
-# download get all of the previously uploaded objects
-ids = bucket.uploaded_objects.keys()
-objects = await bucket.get(*ids)
-print(*objects, sep='\n')
-"""
-prints:
-{'pi': 3.14}
-b'nobody'
-['expects', 'the']
-{'spammish', 'inquisition'}
-"""
+Retrieving items stored in a bucket
+```py
+obj = await bucket.get_obj('my-object')
+assert obj == {'hello': b'world', ('foo', 'bar'): {'baz'}}
+```
 
-# delete all uploaded objects and remove the bucket index from the disk
+Delete a specific item in a bucket
+```py
+await bucket.delete_obj('my-object')
+```
+
+Delete an entire bucket and its contents
+```py
 await bucket.delete()
 ```
 
